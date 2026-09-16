@@ -28,6 +28,16 @@ TEXT = (ROOT / "action.yml").read_text()
 # or because one input becomes several arguments.
 PLUMBING = {"repos", "config", "args", "install-cloc", "fail-on-skipped"}
 
+# The name the listing is published under. `clocwork` alone is refused by the
+# release form, because it matches a GitHub user account that is not ours. The
+# repository, the command and every `uses:` line are all still clocwork; this
+# string is the Marketplace title and nothing else.
+MARKETPLACE_NAME = "clocwork lines of code"
+
+# The release form truncates past this, and refuses to publish rather than
+# truncating silently.
+DESCRIPTION_LIMIT = 125
+
 # GitHub takes these eight and nothing else.
 BRANDING_COLORS = (
     "white",
@@ -51,6 +61,13 @@ def block(name: str) -> str:
         if keeping:
             out.append(line)
     return "\n".join(out)
+
+
+def folded(key: str) -> str:
+    """A top-level `>-` block, as the one line YAML folds it into."""
+    body = re.search(rf"(?m)^{key}: >-\n((?:^  .*\n)+?)(?=^\S)", TEXT)
+    assert body is not None, f"no folded {key} block"
+    return " ".join(body.group(1).split())
 
 
 RUNS = block("runs")
@@ -214,8 +231,15 @@ class TestExampleWorkflow(unittest.TestCase):
         self.assertIn("examples/clocwork.yml", readme)
 
 
-class TestBranding(unittest.TestCase):
-    """Inert until there is a Marketplace listing, and required the day there is."""
+class TestMarketplace(unittest.TestCase):
+    """What the listing needs, checked here because nothing else checks it.
+
+    These rules are enforced on the release form and nowhere else, so breaking
+    one costs nothing until somebody is halfway through publishing a release
+    and cannot finish. GitHub reads this file on the default branch when the
+    box is ticked, not the tree at the tag being released, which is why a stale
+    `main` is enough to fail a release of a tag that was fine.
+    """
 
     def test_an_icon_and_an_allowed_colour(self):
         branding = block("branding")
@@ -225,6 +249,15 @@ class TestBranding(unittest.TestCase):
         self.assertIsNotNone(color)
         assert color is not None  # for the type checker
         self.assertIn(color.group(1), BRANDING_COLORS)
+
+    def test_the_name_is_the_one_the_listing_carries(self):
+        name = re.search(r"(?m)^name:\s*(.+)$", TEXT)
+        self.assertIsNotNone(name)
+        assert name is not None  # for the type checker
+        self.assertEqual(name.group(1).strip(), MARKETPLACE_NAME)
+
+    def test_the_description_fits(self):
+        self.assertLess(len(folded("description")), DESCRIPTION_LIMIT)
 
 
 if __name__ == "__main__":
